@@ -273,12 +273,12 @@ pytest -q
 
 ## Known limitations
 
-- Reviews only visible diff context, not full repository semantics
-- Provider/model quality affects finding quality
-- Some platform APIs may reject comments if diff position changed server-side
+- Input is still a unified diff: chunking and cross-chunk synthesis give a coherent summary across a large patch, but the model is not given the wider codebase (imports, callers, types outside the hunk).
+- Provider/model quality affects finding quality.
+- Some platform APIs may reject comments if diff position changed server-side.
 
 ## Next iteration ideas
 
-- Add local policy/rule packs per repo
-- Add GitHub Checks / GitLab pipeline summary mode
-- Add consensus mode (compare two models, merge intersection)
+- Repo-local config exists for CLI defaults (`.pr-reviewer.toml`); extend with explicit policy/rule text or pack files the prompts must follow.
+- Add GitHub Checks / GitLab pipeline summary mode.
+- Add consensus mode (compare two models, merge intersection).
