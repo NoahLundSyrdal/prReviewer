@@ -40,7 +40,7 @@ Repository = "https://github.com/NoahLundSyrdal/prReviewer"
 pr-reviewer = "pr_reviewer.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["pr_reviewer*"]
+include = ["pr_reviewer*", "action*"]
 
 [tool.ruff]
 target-version = "py311"

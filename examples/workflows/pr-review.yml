@@ -4,31 +4,14 @@ on:
   pull_request:
     types: [opened, synchronize]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   review:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: NoahLundSyrdal/prReviewer@v1
         with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install pr-reviewer
-        run: pip install git+https://github.com/NoahLundSyrdal/prReviewer.git
-      - name: Get PR diff
-        run: |
-          git diff origin/${{ github.event.pull_request.base.ref }}...HEAD > /tmp/pr.patch
-      - name: Run review
-        env:
-          PR_REVIEWER_API_KEY: ${{ secrets.PR_REVIEWER_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          pr-reviewer review /tmp/pr.patch \
-            --mode multi \
-            --post github \
-            --repo ${{ github.repository }} \
-            --pr ${{ github.event.pull_request.number }}
+          api_key: ${{ secrets.OPENAI_API_KEY }}

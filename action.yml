@@ -1,0 +1,67 @@
+name: 'PR Reviewer'
+description: 'LLM-powered PR review that posts structured, actionable inline comments on your pull requests'
+author: 'Noah Lund Syrdal'
+
+branding:
+  icon: 'eye'
+  color: 'blue'
+
+inputs:
+  api_key:
+    description: 'API key for the LLM provider (OpenAI, etc.)'
+    required: true
+  github_token:
+    description: 'GitHub token for posting review comments'
+    required: false
+    default: ${{ github.token }}
+  model:
+    description: 'LLM model identifier'
+    required: false
+    default: 'gpt-4.1-mini'
+  mode:
+    description: 'Review mode: single (faster) or multi (deeper, multi-pass)'
+    required: false
+    default: 'multi'
+  base_url:
+    description: 'OpenAI-compatible API base URL'
+    required: false
+    default: 'https://api.openai.com/v1'
+  max_lines:
+    description: 'Max diff lines per review chunk'
+    required: false
+    default: '1200'
+  exclude:
+    description: 'Glob patterns to exclude from review (comma-separated, e.g. "*.lock,docs/**")'
+    required: false
+    default: ''
+  post_comments:
+    description: 'Whether to post inline comments on the PR'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install pr-reviewer
+      shell: bash
+      run: pip install "${{ github.action_path }}"
+
+    - name: Run PR review
+      shell: bash
+      env:
+        PR_REVIEWER_API_KEY: ${{ inputs.api_key }}
+        PR_REVIEWER_BASE_URL: ${{ inputs.base_url }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        INPUT_MODEL: ${{ inputs.model }}
+        INPUT_MODE: ${{ inputs.mode }}
+        INPUT_MAX_LINES: ${{ inputs.max_lines }}
+        INPUT_EXCLUDE: ${{ inputs.exclude }}
+        INPUT_POST_COMMENTS: ${{ inputs.post_comments }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+      run: python "${{ github.action_path }}/action/run_review.py"
