@@ -372,10 +372,13 @@ def test_github_connection_error_handling(
 def test_github_422_skips_finding(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test that GitHub 422 responses are handled gracefully (position rejected)."""
+    """Test that GitHub 422 responses trigger fallback when fallback also fails."""
     session = _FakeSession(
         get_responses=[_FakeResponse(200, {"head": {"sha": "abc123"}})],
-        post_responses=[_FakeResponse(422, {}, text="Unprocessable Entity")],
+        post_responses=[
+            _FakeResponse(422, {}, text="Unprocessable Entity"),
+            _FakeResponse(500, {}, text="Internal Server Error"),  # fallback fails
+        ],
     )
     monkeypatch.setattr("pr_reviewer.integrations.requests.Session", lambda: session)
 
@@ -393,5 +396,102 @@ def test_github_422_skips_finding(
 
     assert report.posted == 0
     assert report.skipped == 1
-    assert len(report.errors) == 1
-    assert "rejected comment position" in report.errors[0]
+    assert any("will try fallback" in e for e in report.errors)
+    assert any("Fallback summary comment failed" in e for e in report.errors)
+
+
+def test_github_fallback_comment_on_422(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When inline comment returns 422, a fallback issue comment is posted."""
+    session = _FakeSession(
+        get_responses=[_FakeResponse(200, {"head": {"sha": "abc123"}})],
+        post_responses=[
+            _FakeResponse(422, {}, text="Unprocessable Entity"),  # inline rejected
+            _FakeResponse(201, {}),  # fallback issue comment succeeds
+        ],
+    )
+    monkeypatch.setattr("pr_reviewer.integrations.requests.Session", lambda: session)
+
+    report = post_findings(
+        platform="github",
+        result=_result(),
+        diff_text=SAMPLE_DIFF,
+        repo="owner/repo",
+        pr_number=1,
+        mr_iid=None,
+        token="github-token",
+        base_url="https://api.github.com",
+        dry_run=False,
+    )
+
+    assert report.posted == 1
+    assert report.skipped == 0
+    assert report.fallback_posted == 1
+    # "will try fallback" messages should be cleaned up
+    assert not any("will try fallback" in e for e in report.errors)
+    # Verify fallback was posted to issues API
+    fallback_url, fallback_payload, _ = session.post_calls[1]
+    assert "/issues/1/comments" in fallback_url
+    assert "could not post as inline comments" in fallback_payload["body"].lower()
+
+
+def test_github_fallback_comment_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When both inline and fallback fail, errors are recorded and finding stays skipped."""
+    session = _FakeSession(
+        get_responses=[_FakeResponse(200, {"head": {"sha": "abc123"}})],
+        post_responses=[
+            _FakeResponse(422, {}, text="Unprocessable Entity"),  # inline rejected
+            _FakeResponse(500, {}, text="Internal Server Error"),  # fallback fails
+        ],
+    )
+    monkeypatch.setattr("pr_reviewer.integrations.requests.Session", lambda: session)
+
+    report = post_findings(
+        platform="github",
+        result=_result(),
+        diff_text=SAMPLE_DIFF,
+        repo="owner/repo",
+        pr_number=1,
+        mr_iid=None,
+        token="github-token",
+        base_url="https://api.github.com",
+        dry_run=False,
+    )
+
+    assert report.posted == 0
+    assert report.skipped == 1
+    assert report.fallback_posted == 0
+    assert any("Fallback summary comment failed" in e for e in report.errors)
+
+
+def test_github_no_fallback_when_all_inline_succeed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When all inline comments succeed, no issues comment is posted."""
+    session = _FakeSession(
+        get_responses=[_FakeResponse(200, {"head": {"sha": "abc123"}})],
+        post_responses=[_FakeResponse(201, {})],  # inline succeeds
+    )
+    monkeypatch.setattr("pr_reviewer.integrations.requests.Session", lambda: session)
+
+    report = post_findings(
+        platform="github",
+        result=_result(),
+        diff_text=SAMPLE_DIFF,
+        repo="owner/repo",
+        pr_number=1,
+        mr_iid=None,
+        token="github-token",
+        base_url="https://api.github.com",
+        dry_run=False,
+    )
+
+    assert report.posted == 1
+    assert report.skipped == 0
+    assert report.fallback_posted == 0
+    assert len(report.errors) == 0
+    # Only 1 POST call (the inline comment), no fallback
+    assert len(session.post_calls) == 1
