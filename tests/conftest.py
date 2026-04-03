@@ -101,7 +101,9 @@ class FakeProvider:
         self._idx = 0
         self.prompts: list[str] = []
 
-    def complete_json(self, *, model: str, system_prompt: str, user_prompt: str) -> str:
+    def complete_json(
+        self, *, model: str, system_prompt: str, user_prompt: str, json_schema: dict | None = None
+    ) -> str:
         self.prompts.append(user_prompt)
         response = self._responses[self._idx]
         self._idx += 1

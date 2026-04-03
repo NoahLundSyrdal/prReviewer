@@ -71,6 +71,44 @@ JSON schema:
 }
 """
 
+REVIEW_JSON_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "verdict": {"type": "string", "enum": ["looks good", "needs attention", "high risk"]},
+        "findings": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "severity": {"type": "string", "enum": ["low", "medium", "high"]},
+                    "category": {"type": "string", "enum": ["bug", "security", "performance", "maintainability"]},
+                    "title": {"type": "string"},
+                    "explanation": {"type": "string"},
+                    "file": {"type": ["string", "null"]},
+                    "line": {"type": ["integer", "null"]},
+                    "confidence": {"type": "number"},
+                    "suggested_fix": {"type": ["string", "null"]},
+                },
+                "required": ["severity", "category", "title", "explanation", "confidence"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["summary", "verdict", "findings"],
+    "additionalProperties": False,
+}
+
+SYNTHESIS_JSON_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "verdict": {"type": "string", "enum": ["looks good", "needs attention", "high risk"]},
+    },
+    "required": ["summary", "verdict"],
+    "additionalProperties": False,
+}
+
 MULTI_PASS_FOCI: list[tuple[str, str]] = [
     (
         "correctness",
@@ -109,6 +147,8 @@ class PRReviewer:
         model: str,
         max_lines: int = 1200,
         review_mode: str = "single",
+        file_context: dict[str, str] | None = None,
+        project_context: dict[str, str] | None = None,
     ) -> ReviewResult:
         if review_mode not in {"single", "multi"}:
             raise ValueError("review_mode must be 'single' or 'multi'")
@@ -136,6 +176,8 @@ class PRReviewer:
                 stats=stats,
                 model=model,
                 warnings=warnings,
+                file_context=file_context,
+                project_context=project_context,
             )
 
         return self._review_single(
@@ -144,6 +186,8 @@ class PRReviewer:
             stats=stats,
             model=model,
             warnings=warnings,
+            file_context=file_context,
+            project_context=project_context,
         )
 
     def _review_single(
@@ -154,6 +198,8 @@ class PRReviewer:
         stats: DiffStats,
         model: str,
         warnings: list[str],
+        file_context: dict[str, str] | None = None,
+        project_context: dict[str, str] | None = None,
     ) -> ReviewResult:
         payloads: list[LLMReviewPayload] = []
         chunk_reviews: list[dict[str, object]] = []
@@ -174,6 +220,8 @@ class PRReviewer:
                 full_stats=stats,
                 chunk_index=chunk_index,
                 chunk_count=chunk_count,
+                file_context=file_context,
+                project_context=project_context,
             )
 
             if parse_warning:
@@ -285,6 +333,8 @@ class PRReviewer:
         stats: DiffStats,
         model: str,
         warnings: list[str],
+        file_context: dict[str, str] | None = None,
+        project_context: dict[str, str] | None = None,
     ) -> ReviewResult:
         payloads: list[tuple[str, LLMReviewPayload]] = []
         chunk_reviews: list[dict[str, object]] = []
@@ -305,6 +355,8 @@ class PRReviewer:
                     full_stats=stats,
                     chunk_index=chunk_index,
                     chunk_count=chunk_count,
+                    file_context=file_context,
+                    project_context=project_context,
                 )
 
                 if parse_warning:
@@ -421,6 +473,8 @@ class PRReviewer:
         full_stats: DiffStats,
         chunk_index: int,
         chunk_count: int,
+        file_context: dict[str, str] | None = None,
+        project_context: dict[str, str] | None = None,
     ) -> tuple[LLMReviewPayload | None, str, str | None]:
         logger.debug(
             "Running pass=%s model=%s chunk=%d/%d lines=%d",
@@ -438,6 +492,8 @@ class PRReviewer:
             focus=focus,
             chunk_index=chunk_index,
             chunk_count=chunk_count,
+            file_context=file_context,
+            project_context=project_context,
         )
 
         try:
@@ -445,6 +501,7 @@ class PRReviewer:
                 model=model,
                 system_prompt=SYSTEM_PROMPT,
                 user_prompt=user_prompt,
+                json_schema=REVIEW_JSON_SCHEMA,
             )
         except LLMError as exc:
             logger.warning("LLM call failed for pass=%s chunk=%d/%d: %s", pass_name, chunk_index, chunk_count, exc)
@@ -463,6 +520,8 @@ class PRReviewer:
         focus: str,
         chunk_index: int,
         chunk_count: int,
+        file_context: dict[str, str] | None = None,
+        project_context: dict[str, str] | None = None,
     ) -> str:
         files_block = "\n".join(f"- {name}" for name in stats.files[:50])
         if not files_block:
@@ -480,6 +539,29 @@ class PRReviewer:
                 f"- Chunk files changed: {stats.files_changed}\n"
                 f"- Chunk visible diff lines: {stats.line_count}\n\n"
             )
+
+        project_block = ""
+        if project_context:
+            parts = [
+                "Project context (README, conventions, config — use to understand what this project"
+                " does and how it is structured):\n"
+            ]
+            for path, content in project_context.items():
+                parts.append(f"=== {path} ===\n{content}\n=== end {path} ===\n")
+            project_block = "\n".join(parts) + "\n"
+
+        context_block = ""
+        if file_context:
+            chunk_files = set(stats.files)
+            relevant = {p: c for p, c in file_context.items() if p in chunk_files}
+            if relevant:
+                parts = [
+                    "File context (full current content of changed files — use to understand broader"
+                    " structure, but only flag issues that are visible in the diff below):\n"
+                ]
+                for path, content in list(relevant.items())[:10]:
+                    parts.append(f"=== {path} ===\n{content}\n=== end {path} ===\n")
+                context_block = "\n".join(parts) + "\n"
 
         return (
             "Review this unified diff and return JSON using the required schema.\n\n"
@@ -499,6 +581,8 @@ class PRReviewer:
             "- Avoid duplicate findings; include only meaningful issues for this pass.\n"
             "- If this is one chunk of a larger diff, do not speculate about code outside this chunk.\n"
             "- If uncertain, lower confidence instead of overstating.\n\n"
+            f"{project_block}"
+            f"{context_block}"
             "DIFF_START\n"
             f"{diff_text}\n"
             "DIFF_END"
@@ -548,6 +632,7 @@ class PRReviewer:
             model=model,
             system_prompt=SYNTHESIS_SYSTEM_PROMPT,
             user_prompt=user_prompt,
+            json_schema=SYNTHESIS_JSON_SCHEMA,
         )
 
         payload, parse_warning = _parse_synthesis_payload(raw_response)

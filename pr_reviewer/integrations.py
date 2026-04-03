@@ -30,6 +30,7 @@ class PostingReport:
     attempted: int = 0
     posted: int = 0
     skipped: int = 0
+    fallback_posted: int = 0
     errors: list[str] = field(default_factory=list)
 
 
@@ -131,6 +132,7 @@ def _post_to_github(
     if not head_sha:
         raise IntegrationError("Could not resolve GitHub PR head SHA.")
 
+    postable_with_status: list[tuple[ReviewFinding, CommentTarget, bool]] = []
     for finding, target in postable_findings:
         report.attempted += 1
 
@@ -144,19 +146,38 @@ def _post_to_github(
 
         if response.status_code in {200, 201}:
             report.posted += 1
+            postable_with_status.append((finding, target, False))
             continue
 
         if response.status_code == 422:
             report.skipped += 1
             report.errors.append(
-                f"Skipped {finding.file}:{finding.line} ({finding.title}): GitHub rejected comment position."
+                f"Skipped {finding.file}:{finding.line} ({finding.title}): "
+                "inline position rejected, will try fallback."
             )
+            postable_with_status.append((finding, target, True))
             continue
 
         report.errors.append(
             f"GitHub comment failed for {finding.file}:{finding.line} ({finding.title}) "
             f"[{response.status_code}]."
         )
+        postable_with_status.append((finding, target, False))
+
+    # Post fallback summary for 422-rejected findings
+    fallback_findings = [(f, t) for f, t, had_422 in postable_with_status if had_422]
+    if fallback_findings:
+        body = _build_fallback_summary_body(fallback_findings)
+        issues_url = f"{base_url.rstrip('/')}/repos/{repo}/issues/{pr_number}/comments"
+        fb_response = session.post(issues_url, json={"body": body}, timeout=_REQUEST_TIMEOUT)
+        if fb_response.status_code in {200, 201}:
+            report.fallback_posted += len(fallback_findings)
+            report.posted += len(fallback_findings)
+            report.skipped -= len(fallback_findings)
+            # Clean up the "will try fallback" error messages
+            report.errors = [e for e in report.errors if "will try fallback" not in e]
+        else:
+            report.errors.append(f"Fallback summary comment failed [{fb_response.status_code}].")
 
     logger.info("GitHub posting complete: %d/%d posted, %d skipped", report.posted, report.attempted, report.skipped)
     return report
@@ -359,6 +380,32 @@ def _build_gitlab_comment_payload(
         "body": _build_comment_body(finding),
         "position": position,
     }
+
+
+def _build_fallback_summary_body(
+    findings_with_targets: list[tuple[ReviewFinding, CommentTarget]],
+) -> str:
+    lines = ["## PR Review — Findings (could not post as inline comments)\n"]
+    lines.append(
+        "The following findings could not be posted as inline comments"
+        " (the diff position may have changed). They are summarized here instead.\n"
+    )
+    for finding, target in findings_with_targets:
+        location = (
+            f"`{target.file_path}:{finding.line}`"
+            if finding.line
+            else f"`{target.file_path}`"
+        )
+        lines.append(
+            f"### [{finding.severity.value.upper()}][{finding.category.value}] {finding.title}\n"
+            f"**Location**: {location}  \n"
+            f"**Confidence**: {finding.confidence:.2f}  \n"
+            f"**Why it matters**: {finding.explanation}\n"
+        )
+        if finding.suggested_fix:
+            lines.append(f"**Suggested fix**: {finding.suggested_fix}\n")
+        lines.append("")
+    return "\n".join(lines)
 
 
 def _build_comment_body(finding: ReviewFinding) -> str:
