@@ -1,0 +1,21 @@
+name: Test PR Reviewer Action
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  test-action:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run local action
+        uses: ./
+        with:
+          api_key: ${{ secrets.OPENAI_API_KEY }}

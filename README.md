@@ -31,6 +31,20 @@ jobs:
 
 3. Open a pull request. That's it.
 
+### Required workflow permissions
+
+The job **must** grant the token permission to read the repo and write pull-request review comments. Without `pull-requests: write`, the workflow can appear to succeed while comment creation fails (often with API errors that are easy to miss).
+
+Add this at the **job** or **workflow** level (the quickstart example above already includes it):
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write
+```
+
+If you use a custom `github_token`, ensure that token has the same scopes.
+
 ## What you get
 
 Every PR gets reviewed with structured findings:

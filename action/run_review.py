@@ -22,8 +22,12 @@ def main() -> int:
     exclude = os.environ.get("INPUT_EXCLUDE", "")
     post_comments = os.environ.get("INPUT_POST_COMMENTS", "true").lower() == "true"
 
-    if not pr_number or not repo:
-        print("::error::This action must run on a pull_request event.", file=sys.stderr)
+    if not pr_number:
+        print("Not a pull request. Skipping.")
+        return 0
+
+    if not repo:
+        print("::error::REPO is not set.", file=sys.stderr)
         return 1
 
     if not os.environ.get("PR_REVIEWER_API_KEY"):
