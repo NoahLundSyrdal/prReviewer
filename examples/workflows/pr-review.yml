@@ -12,6 +12,6 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - uses: NoahLundSyrdal/prReviewer@v1
+      - uses: NoahLundSyrdal/prReviewer@v1.1
         with:
           api_key: ${{ secrets.OPENAI_API_KEY }}

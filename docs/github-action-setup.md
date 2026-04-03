@@ -18,7 +18,7 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - uses: NoahLundSyrdal/prReviewer@v1
+      - uses: NoahLundSyrdal/prReviewer@v1.1
         with:
           api_key: ${{ secrets.OPENAI_API_KEY }}
 ```
@@ -30,7 +30,7 @@ jobs:
 Any OpenAI-compatible API works. Set `base_url` to your provider's endpoint:
 
 ```yaml
-- uses: NoahLundSyrdal/prReviewer@v1
+- uses: NoahLundSyrdal/prReviewer@v1.1
   with:
     api_key: ${{ secrets.LLM_API_KEY }}
     base_url: 'https://api.anthropic.com/v1'
@@ -42,7 +42,7 @@ Any OpenAI-compatible API works. Set `base_url` to your provider's endpoint:
 Skip generated files, lock files, or specific directories:
 
 ```yaml
-- uses: NoahLundSyrdal/prReviewer@v1
+- uses: NoahLundSyrdal/prReviewer@v1.1
   with:
     api_key: ${{ secrets.OPENAI_API_KEY }}
     exclude: '*.lock,*.min.js,dist/**,docs/**,*.generated.*'
@@ -54,7 +54,7 @@ Skip generated files, lock files, or specific directories:
 - `multi` (default): Three focused passes (correctness, security, performance), then deduplicates and merges. More thorough.
 
 ```yaml
-- uses: NoahLundSyrdal/prReviewer@v1
+- uses: NoahLundSyrdal/prReviewer@v1.1
   with:
     api_key: ${{ secrets.OPENAI_API_KEY }}
     mode: 'single'  # or 'multi'
@@ -65,7 +65,7 @@ Skip generated files, lock files, or specific directories:
 Set `post_comments: 'false'` to print the review in the action log without posting inline comments:
 
 ```yaml
-- uses: NoahLundSyrdal/prReviewer@v1
+- uses: NoahLundSyrdal/prReviewer@v1.1
   with:
     api_key: ${{ secrets.OPENAI_API_KEY }}
     post_comments: 'false'

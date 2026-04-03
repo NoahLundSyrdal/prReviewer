@@ -10,7 +10,7 @@ LLM-powered code review that posts structured, actionable inline comments on you
 
 1. Add your OpenAI API key as a repo secret: **Settings → Secrets → Actions → `OPENAI_API_KEY`**
 
-2. Create `.github/workflows/pr-review.yml` (copy as-is; it already includes the minimum you need: `permissions`, `NoahLundSyrdal/prReviewer@v1`, and `api_key`):
+2. Create `.github/workflows/pr-review.yml` (copy as-is; it already includes the minimum you need: `permissions`, `NoahLundSyrdal/prReviewer@v1.1`, and `api_key`):
 
 ```yaml
 name: PR Review
@@ -24,7 +24,7 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - uses: NoahLundSyrdal/prReviewer@v1
+      - uses: NoahLundSyrdal/prReviewer@v1.1
         with:
           api_key: ${{ secrets.OPENAI_API_KEY }}
 ```
@@ -61,7 +61,7 @@ Findings are posted as inline review comments directly on the changed lines.
 Default mode is **`multi`**, which runs separate passes for correctness, security, and performance (best review quality). For **large PRs**, set `mode: 'single'` for **lower cost** and **faster** runs.
 
 ```yaml
-- uses: NoahLundSyrdal/prReviewer@v1
+- uses: NoahLundSyrdal/prReviewer@v1.1
   with:
     api_key: ${{ secrets.OPENAI_API_KEY }}
     mode: 'multi'              # 'single' (faster) or 'multi' (deeper: correctness + security + performance)
