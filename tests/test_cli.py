@@ -144,6 +144,7 @@ def test_main_reads_patch_and_saves_output(
         "max_lines": 1200,
         "review_mode": "single",
         "file_context": None,
+        "project_context": None,
     }
 
 
@@ -219,6 +220,7 @@ def test_main_loads_defaults_from_dot_pr_reviewer_toml(
         "max_lines": 77,
         "review_mode": "multi",
         "file_context": None,
+        "project_context": None,
     }
     assert calls["format_kwargs"] == {
         "output_format": "text",
@@ -277,6 +279,7 @@ def test_main_loads_pyproject_config_but_cli_flags_override(
         "max_lines": 88,
         "review_mode": "single",
         "file_context": None,
+        "project_context": None,
     }
     assert calls["format_kwargs"] == {
         "output_format": "json",

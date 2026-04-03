@@ -293,20 +293,23 @@ def run_review(args: argparse.Namespace) -> int:
         logger.error("empty diff input")
         return 2
 
-    # Auto-fetch file context when posting to GitHub (we have repo + PR number)
+    # Auto-fetch file + project context when posting to GitHub (we have repo + PR number)
     file_context: dict[str, str] | None = None
+    project_context: dict[str, str] | None = None
     if args.post == "github" and args.repo and args.pr and not getattr(args, "no_context", False):
-        from .context import fetch_github_file_context
+        from .context import fetch_github_file_context, fetch_project_context
         from .parsing import parse_diff_stats
 
+        # Resolve PR head SHA for accurate file fetching
+        ref = _resolve_github_head_sha(
+            repo=args.repo,
+            pr_number=args.pr,
+            token=args.integration_token,
+        )
+
+        # Per-file context: full content of each changed file
         file_paths = parse_diff_stats(diff_text).files
         if file_paths:
-            # Resolve head SHA for accuracy
-            ref = _resolve_github_head_sha(
-                repo=args.repo,
-                pr_number=args.pr,
-                token=args.integration_token,
-            )
             file_context = fetch_github_file_context(
                 repo=args.repo,
                 file_paths=file_paths,
@@ -315,6 +318,15 @@ def run_review(args: argparse.Namespace) -> int:
             )
             if file_context:
                 logger.info("Fetched file context for %d file(s)", len(file_context))
+
+        # Project context: README, conventions, config manifest
+        project_context = fetch_project_context(
+            repo=args.repo,
+            ref=ref,
+            token=args.integration_token,
+        )
+        if project_context:
+            logger.info("Fetched project context: %s", ", ".join(project_context.keys()))
 
     try:
         provider = OpenAICompatibleProvider(base_url=args.base_url)
@@ -325,6 +337,7 @@ def run_review(args: argparse.Namespace) -> int:
             max_lines=args.max_lines,
             review_mode=args.mode,
             file_context=file_context,
+            project_context=project_context,
         )
     except (ProviderConfigError, LLMError) as exc:
         logger.error("%s", exc)

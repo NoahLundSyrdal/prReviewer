@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
-from pr_reviewer.context import _MAX_FILE_LINES, fetch_github_file_context
+from pr_reviewer.context import _MAX_FILE_LINES, fetch_github_file_context, fetch_project_context
 
 
 def _b64(content: str) -> str:
@@ -191,3 +191,93 @@ class TestFetchGithubFileContext:
         assert "src/x.py" in result
         call_kwargs = session.headers.update.call_args[0][0]
         assert "Authorization" not in call_kwargs
+
+
+# ---------------------------------------------------------------------------
+# fetch_project_context
+# ---------------------------------------------------------------------------
+
+
+class TestFetchProjectContext:
+    def test_fetches_readme_and_config(self) -> None:
+        readme_content = "# My Project\nDoes cool stuff."
+        config_content = "[tool.myapp]\nversion = '1.0'"
+
+        def _get_side_effect(url, **kwargs):
+            if "README.md" in url:
+                return _mock_response(200, {"content": _b64(readme_content)})
+            if "pyproject.toml" in url:
+                return _mock_response(200, {"content": _b64(config_content)})
+            return _mock_response(404)
+
+        with patch("pr_reviewer.context.requests.Session") as mock_session_cls:
+            session = MagicMock()
+            session.get.side_effect = _get_side_effect
+            mock_session_cls.return_value = session
+
+            result = fetch_project_context(repo="owner/repo", ref="main", token="tok")
+
+        assert "README.md" in result
+        assert readme_content in result["README.md"]
+
+    def test_stops_after_first_readme_hit(self) -> None:
+        """Should not fetch README.rst if README.md succeeded."""
+        readme_md_content = "# Found me"
+
+        call_log: list[str] = []
+
+        def _get_side_effect(url, **kwargs):
+            call_log.append(url)
+            if "README.md" in url:
+                return _mock_response(200, {"content": _b64(readme_md_content)})
+            return _mock_response(404)
+
+        with patch("pr_reviewer.context.requests.Session") as mock_session_cls:
+            session = MagicMock()
+            session.get.side_effect = _get_side_effect
+            mock_session_cls.return_value = session
+
+            result = fetch_project_context(repo="owner/repo", ref="main", token="tok")
+
+        assert "README.md" in result
+        assert not any("README.rst" in url for url in call_log), "README.rst should not be fetched after README.md hit"
+
+    def test_truncates_at_per_file_line_cap(self) -> None:
+        # README.md has a cap of 150 lines
+        lines = [f"line {i}" for i in range(200)]
+        content = "\n".join(lines)
+
+        with patch("pr_reviewer.context.requests.Session") as mock_session_cls:
+            session = MagicMock()
+            session.get.return_value = _mock_response(200, {"content": _b64(content)})
+            mock_session_cls.return_value = session
+
+            result = fetch_project_context(
+                repo="owner/repo",
+                ref="main",
+                token="tok",
+                candidates=[("README.md", 150)],
+            )
+
+        assert "README.md" in result
+        assert "truncated at 150 lines" in result["README.md"]
+
+    def test_all_404_returns_empty(self) -> None:
+        with patch("pr_reviewer.context.requests.Session") as mock_session_cls:
+            session = MagicMock()
+            session.get.return_value = _mock_response(404)
+            mock_session_cls.return_value = session
+
+            result = fetch_project_context(repo="owner/repo", ref="main", token=None)
+
+        assert result == {}
+
+    def test_network_error_skipped(self) -> None:
+        with patch("pr_reviewer.context.requests.Session") as mock_session_cls:
+            session = MagicMock()
+            session.get.side_effect = requests.ConnectionError("down")
+            mock_session_cls.return_value = session
+
+            result = fetch_project_context(repo="owner/repo", ref="main", token=None)
+
+        assert result == {}
