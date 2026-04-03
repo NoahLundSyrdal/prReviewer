@@ -22,7 +22,14 @@ class LLMError(RuntimeError):
 
 
 class LLMProvider(Protocol):
-    def complete_json(self, *, model: str, system_prompt: str, user_prompt: str) -> str:
+    def complete_json(
+        self,
+        *,
+        model: str,
+        system_prompt: str,
+        user_prompt: str,
+        json_schema: dict | None = None,
+    ) -> str:
         ...
 
 
@@ -48,12 +55,32 @@ class OpenAICompatibleProvider:
             or default_base_url
         ).rstrip("/")
 
-    def complete_json(self, *, model: str, system_prompt: str, user_prompt: str) -> str:
+    def complete_json(
+        self,
+        *,
+        model: str,
+        system_prompt: str,
+        user_prompt: str,
+        json_schema: dict | None = None,
+    ) -> str:
         url = f"{self.base_url}/chat/completions"
+
+        if json_schema:
+            response_format = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "review_result",
+                    "strict": True,
+                    "schema": json_schema,
+                },
+            }
+        else:
+            response_format = {"type": "json_object"}
+
         payload = {
             "model": model,
             "temperature": 0.1,
-            "response_format": {"type": "json_object"},
+            "response_format": response_format,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -97,6 +124,15 @@ class OpenAICompatibleProvider:
 
             elapsed = time.monotonic() - t0
             logger.debug("LLM response %d in %.2fs", response.status_code, elapsed)
+
+            # Graceful fallback: if json_schema mode gets 400, retry with json_object
+            if response.status_code == 400 and json_schema and payload["response_format"]["type"] == "json_schema":
+                logger.warning(
+                    "Provider returned 400 with json_schema mode; "
+                    "falling back to json_object response_format."
+                )
+                payload["response_format"] = {"type": "json_object"}
+                continue
 
             if response.status_code in {429, 500, 502, 503, 504} and attempt < attempts:
                 retry_after = response.headers.get("Retry-After")

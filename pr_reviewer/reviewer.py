@@ -71,6 +71,44 @@ JSON schema:
 }
 """
 
+REVIEW_JSON_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "verdict": {"type": "string", "enum": ["looks good", "needs attention", "high risk"]},
+        "findings": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "severity": {"type": "string", "enum": ["low", "medium", "high"]},
+                    "category": {"type": "string", "enum": ["bug", "security", "performance", "maintainability"]},
+                    "title": {"type": "string"},
+                    "explanation": {"type": "string"},
+                    "file": {"type": ["string", "null"]},
+                    "line": {"type": ["integer", "null"]},
+                    "confidence": {"type": "number"},
+                    "suggested_fix": {"type": ["string", "null"]},
+                },
+                "required": ["severity", "category", "title", "explanation", "confidence"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["summary", "verdict", "findings"],
+    "additionalProperties": False,
+}
+
+SYNTHESIS_JSON_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "verdict": {"type": "string", "enum": ["looks good", "needs attention", "high risk"]},
+    },
+    "required": ["summary", "verdict"],
+    "additionalProperties": False,
+}
+
 MULTI_PASS_FOCI: list[tuple[str, str]] = [
     (
         "correctness",
@@ -445,6 +483,7 @@ class PRReviewer:
                 model=model,
                 system_prompt=SYSTEM_PROMPT,
                 user_prompt=user_prompt,
+                json_schema=REVIEW_JSON_SCHEMA,
             )
         except LLMError as exc:
             logger.warning("LLM call failed for pass=%s chunk=%d/%d: %s", pass_name, chunk_index, chunk_count, exc)
@@ -548,6 +587,7 @@ class PRReviewer:
             model=model,
             system_prompt=SYNTHESIS_SYSTEM_PROMPT,
             user_prompt=user_prompt,
+            json_schema=SYNTHESIS_JSON_SCHEMA,
         )
 
         payload, parse_warning = _parse_synthesis_payload(raw_response)

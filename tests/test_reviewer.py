@@ -47,7 +47,9 @@ class FakeProvider:
         self._idx = 0
         self.prompts: list[str] = []
 
-    def complete_json(self, *, model: str, system_prompt: str, user_prompt: str) -> str:
+    def complete_json(
+        self, *, model: str, system_prompt: str, user_prompt: str, json_schema: dict | None = None
+    ) -> str:
         self.prompts.append(user_prompt)
         response = self._responses[self._idx]
         self._idx += 1
@@ -61,7 +63,9 @@ class FailingProvider:
         self._error_message = error_message
         self.call_count = 0
 
-    def complete_json(self, *, model: str, system_prompt: str, user_prompt: str) -> str:
+    def complete_json(
+        self, *, model: str, system_prompt: str, user_prompt: str, json_schema: dict | None = None
+    ) -> str:
         self.call_count += 1
         raise LLMError(self._error_message)
 
@@ -414,7 +418,7 @@ def test_multi_pass_partial_failure() -> None:
         def __init__(self):
             self.call_count = 0
 
-        def complete_json(self, *, model, system_prompt, user_prompt):
+        def complete_json(self, *, model, system_prompt, user_prompt, json_schema=None):
             self.call_count += 1
             if self.call_count == 1:
                 # First pass succeeds
